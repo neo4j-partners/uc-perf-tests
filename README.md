@@ -1,24 +1,33 @@
-# uc-perf-tests
+# Neo4j Unity Catalog Federation: Performance Analysis
 
-Performance testing suite for Neo4j Unity Catalog JDBC federation on Databricks. Isolates and measures overhead at each layer of the query pipeline: Python driver, Spark JDBC, Unity Catalog / SafeSpark sandbox, and Spark Connector.
+This project measures query performance for Neo4j running through Databricks Unity Catalog federation. Federated queries against Neo4j add 12 to 16 seconds of overhead per call. The test suite runs the same queries through four connection paths, from direct database access up through the full Databricks federation stack, to isolate exactly where that overhead originates. The finding was cross-validated against Databricks Lakebase using a standard PostgreSQL JDBC driver through the same SafeSpark path, confirming the overhead originates in the SafeSpark sandbox layer and applies to any custom JDBC driver.
 
-Extracted from the `validate-federation` project to run independently.
+## Performance Findings
 
-> **Prerequisites:** See the [Neo4j UC JDBC Guide](https://neo4j-partners.github.io/neo4j-uc-integration/neo4j_uc_jdbc_guide.html) for full setup instructions — configuring the UC connection, uploading the connector JAR, and loading the lakehouse tables.
+The SafeSpark sandbox is the source of the overhead. The clearest evidence is a controlled test against the same database through two different connection paths: a federated query through Databricks' built-in PostgreSQL connector completes in 0.752 seconds, while the same query through a custom JDBC connection takes 10.434 seconds. The Neo4j connector, run directly on the Spark executor, completes the same queries in 0.35 to 0.61 seconds. The 12 to 16 second overhead appears only when queries route through SafeSpark.
 
-## Setup
+The overhead is constant regardless of query complexity. A simple count and a multi-hop graph traversal both take the same 12 to 16 seconds. Repeated runs show no improvement over time, meaning the cost is paid on every query call.
+
+See [PERFORMANCE_FINDINGS.md](PERFORMANCE_FINDINGS.md) for the full diagnostic report.
+
+## SafeSpark Investigation
+
+SafeSpark is the security sandbox within Databricks' Lakeguard framework that isolates custom database drivers. When a connection uses a custom JDBC driver, that driver runs in a separate sandboxed process rather than directly inside Spark. This isolation protects the cluster from vulnerabilities Databricks has documented in third-party JDBC drivers, including remote code execution and command injection risks.
+
+The ~12 second per-query overhead reflects four costs at the sandbox boundary: starting the sandboxed process, running a schema inspection before each query, communicating results back to Spark through that boundary, and establishing the database connection. The Neo4j connector's size adds approximately 5 to 6 seconds of load time compared to a smaller driver like PostgreSQL. Increasing sandbox memory by 10x raised query times to 22-26 seconds, confirming the overhead comes from the sandbox architecture rather than resource constraints.
+
+See [SAFESPARK_INVESTIGATION.md](SAFESPARK_INVESTIGATION.md) for the full investigation.
+
+## Quick Start
+
+Before running the tests, complete the cluster and connection setup described in the [Neo4j UC JDBC Guide](https://neo4j-partners.github.io/neo4j-uc-integration/neo4j_uc_jdbc_guide.html), which covers configuring the UC connection, uploading the connector JAR, and loading the lakehouse tables.
+
+The cluster must run a Databricks Runtime with Unity Catalog enabled, have the Neo4j Spark Connector installed, have the Neo4j JDBC connector JAR uploaded to a UC Volume with its path set in `JDBC_JAR_PATH`, and have the Delta lakehouse tables loaded (aircraft, systems, sensors, sensor_readings).
 
 ```bash
 cp env.sample .env
 # Edit .env with your Databricks, Neo4j, and UC JDBC credentials
 ```
-
-### Cluster requirements
-
-- Databricks Runtime with Unity Catalog enabled
-- Neo4j Spark Connector installed on the cluster
-- Neo4j JDBC connector JAR uploaded to a UC Volume (path set in `JDBC_JAR_PATH`)
-- Delta lakehouse tables loaded (aircraft, systems, sensors, sensor_readings)
 
 ## Usage
 

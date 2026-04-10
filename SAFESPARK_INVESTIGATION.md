@@ -6,7 +6,7 @@ This document records the research and investigation into the ~12-second per-que
 
 ## Investigation Summary
 
-SafeSpark is the internal name for Databricks' JDBC driver sandbox, part of the broader Lakeguard isolation framework. It runs custom JDBC drivers in an isolated child JVM process with its own heap, metaspace, and container memory limits. There is almost no public documentation on SafeSpark internals. The term appears only in `spark.databricks.safespark.*` configuration parameters and in Databricks engineering discussions. No source code, patents, or dedicated documentation pages exist publicly.
+SafeSpark is the internal name for Databricks' JDBC driver sandbox, part of the broader Lakeguard isolation framework. It runs custom JDBC drivers in an isolated child JVM process with its own heap, metaspace, and container memory limits. Public documentation covers SafeSpark through its configuration parameters (`spark.databricks.safespark.*`) and Databricks' Lakeguard documentation. The internal architecture described in this document is inferred from those sources, observed behavior, and diagnostic measurements.
 
 The ~12-second overhead is consistent with a per-query child JVM lifecycle that includes: sandbox process startup or connection acquisition, classloading of the shaded connector JAR, a mandatory schema inference round-trip (`WHERE 1=0`), IPC serialization between the Spark executor and the sandbox, and JDBC connection establishment. The warm-up test showed no improvement across repeated queries, suggesting the overhead is structural and per-invocation rather than a one-time initialization cost.
 
@@ -61,11 +61,11 @@ https://www.databricks.com/blog/unity-catalog-lakeguard-industry-first-and-only-
 
 ## Part 2: SafeSpark Architecture (Inferred)
 
-No public documentation describes the SafeSpark sandbox architecture. The following is inferred from configuration parameters, observed behavior, and Databricks documentation.
+The following is inferred from configuration parameters, observed behavior, and Databricks documentation.
 
 ### Separate Child JVM Process
 
-The SafeSpark JDBC sandbox is a **separate child JVM process**, not merely a classloader isolation boundary within the Spark executor. Evidence:
+The SafeSpark JDBC sandbox runs as a **separate child JVM process** with its own isolated runtime. Evidence:
 
 - It has its own **metaspace** allocation (`spark.databricks.safespark.jdbcSandbox.jvm.maxMetaspace.mib`). Metaspace is a JVM-level concept; classloader isolation within a single JVM shares metaspace.
 - It has its own **heap** (`spark.databricks.safespark.jdbcSandbox.jvm.xmx.mib`). The `-Xmx` flag is a JVM startup parameter.
@@ -94,7 +94,7 @@ Our cluster configuration uses:
 spark.databricks.safespark.jdbcSandbox.jvm.maxMetaspace.mib 128
 ```
 
-No other `spark.databricks.safespark.*` parameters have been found in any public source. There may be undocumented parameters controlling sandbox lifecycle, connection pooling, GC tuning, or JVM startup flags.
+The parameters above are those found in public sources. Additional parameters controlling sandbox lifecycle, connection pooling, GC tuning, or JVM startup flags may exist.
 
 ### IPC Mechanism
 
@@ -220,7 +220,7 @@ If connections are not pooled within the sandbox:
 
 ### Supporting Evidence: Direct JDBC Timing
 
-The direct JDBC test (Test 1b) completes the same queries in 0.3-0.5 seconds. This path uses `spark.read.format("jdbc")` with the Neo4j JDBC driver directly on the executor (no SafeSpark). The driver's JAR is loaded as a cluster library in the executor's own JVM. The 0.3-0.5s includes Spark DataFrame overhead, JDBC connection, SQL-to-Cypher translation, and Neo4j round-trip. This proves the JDBC driver itself is not slow.
+The direct JDBC test (Test 1b) completes the same queries in 0.3-0.5 seconds. This path uses `spark.read.format("jdbc")` with the Neo4j JDBC driver directly on the executor (no SafeSpark). The driver's JAR is loaded as a cluster library in the executor's own JVM. The 0.3-0.5s includes Spark DataFrame overhead, JDBC connection, SQL-to-Cypher translation, and Neo4j round-trip. This confirms the JDBC driver performs well when loaded directly on the executor.
 
 ---
 
@@ -244,11 +244,11 @@ User "CharlesRColas" (January 24, 2025):
 User "pdiamond" (February 11, 2025):
 > "I've found the JDBC query to be faster than the federated query because in our testing, the federated query does not pass down the full query to the source database. Instead, it's running 'select * from table', pulling all of the data into Databricks and then filtering it before displaying/returning to the notebook."
 
-The third user's observation (full-table scan instead of pushdown) is a distinct issue from our constant per-query overhead, but the thread confirms that UC federation has multiple layers of performance impact and that the overhead is severe enough to be "cost prohibitive" for production workloads.
+The third user's observation about full-table scans is a distinct issue from the constant per-query overhead measured here, but the thread confirms that per-query overhead in UC federation is a recognized concern across different source systems and configurations.
 
 ### Databricks Performance Recommendations
 
-Databricks' own federation performance documentation acknowledges overhead but does not address SafeSpark-specific latency:
+The Lakehouse Federation performance documentation covers these query optimization patterns:
 
 **Source:** Lakehouse Federation performance recommendations
 https://docs.databricks.com/aws/en/query-federation/performance-recommendations
@@ -259,7 +259,7 @@ Key recommendations:
 - Use partition parameters for parallel reads
 - Join pushdown (Public Preview in DBR 17.2+) pushes entire joins to the remote database
 
-Notably absent: any mention of SafeSpark tuning, sandbox lifecycle management, or per-query overhead mitigation.
+The documentation focuses on query pushdown and parallel read optimization; SafeSpark-specific tuning is outside its scope.
 
 ---
 
@@ -303,7 +303,7 @@ The Spark physical plan for a simple `remote_query()` is minimal:
      [cnt#24760L] PushedFilters: [], ReadSchema: struct<cnt:bigint>
 ```
 
-No unnecessary stages, shuffles, or broadcasts. The plan is a single JDBC scan. The overhead is below the plan level, in the JDBC execution layer.
+The plan is a single JDBC scan with no additional stages, shuffles, or broadcasts. The overhead is below the plan level, in the JDBC execution layer.
 
 ---
 
