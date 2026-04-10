@@ -95,7 +95,7 @@ python -m perf_scripts.cli run --skip-upload --group baseline
 
 ## Lakebase (PostgreSQL)
 
-The `deploy-lakebase/` directory contains tooling for managing a Databricks Lakebase instance used by the `pg_builtin` and `pg_jdbc` tests. It has its own `.env` configuration — see `deploy-lakebase/README.md` for full details.
+The `deploy-lakebase/` directory contains tooling for managing a Databricks Lakebase instance used by the `pg_builtin` and `pg_jdbc` tests. For details on its `.env` configuration, see `deploy-lakebase/README.md`.
 
 ```bash
 cd deploy-lakebase

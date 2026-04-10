@@ -32,7 +32,7 @@ The diagnostic script runs the same queries through four progressively deeper la
 | **PG built-in remote_query()** | Same `remote_query()` function, no SafeSpark | 0.66 - 0.75s | +47% |
 | **PG custom JDBC via UC** | Same SafeSpark sandbox, different driver (1.1 MB JAR) | 8.5 - 10.4s | +1,869% |
 
-*Percentages computed from range midpoints against the JDBC via Spark baseline. The Direct Python driver is not used as the baseline because it bypasses Spark entirely — its per-query times (0.006–0.219s) vary by 36x across queries, producing misleading percentages. The JDBC via Spark layer is the first path that includes Spark overhead, making it a more meaningful baseline for isolating the cost of Unity Catalog and SafeSpark.
+*Percentages computed from range midpoints against the JDBC via Spark baseline. The Direct Python driver is not used as the baseline because it bypasses Spark entirely; its per-query times (0.006–0.219s) vary by 36x across queries, producing misleading percentages. The JDBC via Spark layer is the first path that includes Spark overhead, making it a more meaningful baseline for isolating the cost of Unity Catalog and SafeSpark.
 
 ### Where the Time Goes
 
@@ -54,9 +54,9 @@ The critical experiment: run `SELECT 1` against the same PostgreSQL database (Da
 
 **Test setup:** The diagnostic script creates two UC connections to the same Lakebase instance:
 
-1. **Built-in connection** (`CREATE CONNECTION pg_perf_builtin TYPE postgresql`) — Databricks recognizes PostgreSQL as a natively supported database. The driver ships as part of the Databricks Runtime, is already loaded in the executor JVM's classpath, and is treated as trusted code. Queries through this connection run in-process with no sandbox isolation.
+1. **Built-in connection** (`CREATE CONNECTION pg_perf_builtin TYPE postgresql`): Databricks recognizes PostgreSQL as a natively supported database. The driver ships as part of the Databricks Runtime, is already loaded in the executor JVM's classpath, and is treated as trusted code. Queries through this connection run in-process with no sandbox isolation.
 
-2. **Custom JDBC connection** (`CREATE CONNECTION pg_perf_jdbc TYPE JDBC`) — Uses a standard PostgreSQL 42.7.10 JAR (1.1 MB) uploaded to a UC Volume and referenced via `java_dependencies`. Despite being the same open-source PostgreSQL driver that Databricks bundles internally, the `TYPE JDBC` declaration marks it as untrusted third-party code. Databricks runs it inside SafeSpark: a separate child JVM process with OS-level sandboxing (Linux namespaces, seccomp-bpf). Each query pays the cost of spawning this sandbox, classloading the JAR, executing, and tearing down.
+2. **Custom JDBC connection** (`CREATE CONNECTION pg_perf_jdbc TYPE JDBC`): Uses a standard PostgreSQL 42.7.10 JAR (1.1 MB) uploaded to a UC Volume and referenced via `java_dependencies`. Despite being the same open-source PostgreSQL driver that Databricks bundles internally, the `TYPE JDBC` declaration marks it as untrusted third-party code. Databricks runs it inside SafeSpark: a separate child JVM process with OS-level sandboxing (Linux namespaces, seccomp-bpf). Each query pays the cost of spawning this sandbox, classloading the JAR, executing, and tearing down.
 
 Both connections point to the same host, port, database, and credentials. The only variable is the code path through Databricks.
 
@@ -69,7 +69,7 @@ Both connections point to the same host, port, database, and credentials. The on
 
 Key conclusions:
 - **`remote_query()` is fast through built-in connections.** It completes in 0.752s through the built-in PostgreSQL connector. The overhead appears when using a custom JDBC connection through SafeSpark.
-- **SafeSpark adds ~10s minimum** regardless of which JDBC driver is used. The same `remote_query()` call to the same database through the custom JDBC PostgreSQL driver takes 10.4s — a 14x overhead from the SafeSpark sandbox alone.
+- **SafeSpark adds ~10s minimum** regardless of which JDBC driver is used. The same `remote_query()` call to the same database through the custom JDBC PostgreSQL driver takes 10.4s, a 14x overhead from the SafeSpark sandbox alone.
 - **The Neo4j JAR's size adds ~5-6s extra** over the PostgreSQL JAR (10.4s vs 16.1s), likely from classloading the 15+ MB shaded fat JAR and initializing the SQL-to-Cypher translator pipeline inside the sandbox.
 - **Built-in connectors run in-process with the Spark executor.** Databricks ships and trusts its own PostgreSQL driver, so queries run with direct executor access. The same Lakebase instance responds in 0.1s through the foreign catalog and 0.75s through `remote_query()`. The identical query against the identical database takes 100x longer through a custom JDBC connection.
 

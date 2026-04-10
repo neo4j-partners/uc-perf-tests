@@ -20,9 +20,9 @@ SafeSpark is the JDBC-specific component of Databricks' Lakeguard isolation fram
 
 Lakeguard has three layers:
 
-1. **Spark Connect decoupling** — client applications and the Spark driver no longer share a JVM or classpath (Apache Spark 3.4+)
-2. **Container sandboxing** — each client application runs in its own isolated container with OS-level boundaries
-3. **UDF isolation on executors** — sandbox execution environment, network egress isolation, environment replication
+1. **Spark Connect decoupling**: client applications and the Spark driver no longer share a JVM or classpath (Apache Spark 3.4+)
+2. **Container sandboxing**: each client application runs in its own isolated container with OS-level boundaries
+3. **UDF isolation on executors**: sandbox execution environment, network egress isolation, environment replication
 
 SafeSpark applies layer 2 (container sandboxing) specifically to custom JDBC drivers loaded through UC connections. When a `CREATE CONNECTION TYPE JDBC` specifies `java_dependencies`, the referenced JAR is loaded and executed inside an isolated sandbox rather than in the Spark executor's JVM.
 
@@ -348,7 +348,7 @@ PostgreSQL is ideal because:
 jdbc:postgresql://<server>.postgres.database.azure.com:5432/<database>?sslmode=require
 ```
 
-**Test A — Built-in connector (no SafeSpark):**
+**Test A: Built-in connector (no SafeSpark):**
 ```sql
 CREATE CONNECTION pg_builtin TYPE postgresql
 OPTIONS (
@@ -364,7 +364,7 @@ OPTIONS (database '<database>');
 -- Then query via: SELECT COUNT(*) FROM pg_catalog.public.test_table
 ```
 
-**Test B — Custom JDBC through SafeSpark:**
+**Test B: Custom JDBC through SafeSpark:**
 ```sql
 CREATE CONNECTION pg_jdbc TYPE JDBC
 ENVIRONMENT (

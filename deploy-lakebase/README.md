@@ -79,4 +79,4 @@ Both `deploy` and `refresh` save a `<project>-connection.json` file with everyth
 
 ## Authentication
 
-The scripts use OAuth credentials tied to your Databricks identity. Tokens expire after 1 hour — run `./deploy.py refresh` to get a new one.
+The scripts use OAuth credentials tied to your Databricks identity. Tokens expire after 1 hour, so run `./deploy.py refresh` to get a new one.
