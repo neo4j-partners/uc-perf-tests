@@ -4,6 +4,9 @@
 !.env.sample
 !.env.example
 *-connection.json
+workarea/
+
+.mcp.json
 
 # Python
 __pycache__/

@@ -25,13 +25,13 @@ cp .env.sample .env
 
 ```bash
 # Create a new Lakebase project and get connection details
-./deploy.py deploy
+uv run python deploy.py deploy
 
 # Generate fresh OAuth credentials (tokens expire after 1 hour)
-./deploy.py refresh
+uv run python deploy.py refresh
 
 # Delete the project and all its resources
-./deploy.py destroy
+uv run python deploy.py destroy
 ```
 
 ## Test the instance
@@ -39,7 +39,7 @@ cp .env.sample .env
 After deploying, run the test script to load sample data and run queries:
 
 ```bash
-./test_lakebase.py
+uv run python test_lakebase.py
 ```
 
 This will:
@@ -51,8 +51,8 @@ This will:
 If the OAuth token has expired, refresh it first:
 
 ```bash
-./deploy.py refresh
-./test_lakebase.py
+uv run python deploy.py refresh
+uv run python test_lakebase.py
 ```
 
 ## Output
@@ -79,4 +79,4 @@ Both `deploy` and `refresh` save a `<project>-connection.json` file with everyth
 
 ## Authentication
 
-The scripts use OAuth credentials tied to your Databricks identity. Tokens expire after 1 hour, so run `./deploy.py refresh` to get a new one.
+The scripts use OAuth credentials tied to your Databricks identity. Tokens expire after 1 hour, so run `uv run python deploy.py refresh` to get a new one.

@@ -20,21 +20,40 @@ See [SAFESPARK_INVESTIGATION.md](SAFESPARK_INVESTIGATION.md) for the full invest
 
 ## Quick Start
 
-Before running the tests, complete the cluster and connection setup described in the [Neo4j UC JDBC Guide](https://neo4j-partners.github.io/neo4j-uc-integration/neo4j_uc_jdbc_guide.html), which covers configuring the UC connection, uploading the connector JAR, and loading the lakehouse tables.
-
-The cluster must run a Databricks Runtime with Unity Catalog enabled, have the Neo4j Spark Connector installed, have the Neo4j JDBC connector JAR uploaded to a UC Volume with its path set in `JDBC_JAR_PATH`, and have the Delta lakehouse tables loaded (aircraft, systems, sensors, sensor_readings).
+Complete the [Neo4j UC JDBC Guide](https://neo4j-partners.github.io/neo4j-uc-integration/neo4j_uc_jdbc_guide.html) first. It covers the UC connection, connector JAR, and sample data setup. Then install [uv](https://docs.astral.sh/uv/getting-started/installation/) and configure the benchmark:
 
 ```bash
 cp env.sample .env
-# Edit .env with your Databricks, Neo4j, and UC JDBC credentials
+uv sync --dev
 ```
+
+Edit `.env` with the Databricks profile and workspace path, Neo4j credentials, `UC_CONNECTION_NAME`, and the UC Volume path to the Neo4j JDBC connector in `JDBC_JAR_PATH`. Classic compute also requires `DATABRICKS_CLUSTER_ID`; that cluster must have the Neo4j Python driver and JDBC JAR installed. Serverless uses `SERVERLESS_ENV_VERSION` and ignores `DATABRICKS_CLUSTER_ID`.
+
+Run the same Neo4j benchmark matrix on classic compute:
+
+```bash
+uv run python -m perf_scripts.cli run \
+  --tests direct_neo4j,direct_jdbc,remote_query,warmup
+```
+
+Run it on serverless compute:
+
+```bash
+uv run python -m perf_scripts.cli run \
+  --tests direct_neo4j,direct_jdbc,remote_query,warmup \
+  --serverless
+```
+
+`direct_neo4j` measures the Python/Bolt floor, `direct_jdbc` measures Spark JDBC without UC, and `remote_query` plus `warmup` measure the UC Connection path. On serverless, the job attaches `JDBC_JAR_PATH` to its environment for direct JDBC. The UC Connection independently loads the same JAR inside SafeSpark, so the two JDBC paths remain distinct while using the same driver artifact.
+
+The uv environment contains only local CLI and test dependencies. Databricks Runtime and PySpark run on the remote compute.
 
 ## Usage
 
 ### Run the full suite
 
 ```bash
-python -m perf_scripts.cli run
+uv run python -m perf_scripts.cli run
 ```
 
 Uploads all scripts to the Databricks workspace and runs every test.
@@ -42,38 +61,57 @@ Uploads all scripts to the Databricks workspace and runs every test.
 ### Run by group
 
 ```bash
-python -m perf_scripts.cli run --group neo4j      # all Neo4j tests
-python -m perf_scripts.cli run --group pg          # just PostgreSQL tests
-python -m perf_scripts.cli run --group baseline    # connectivity + direct + delta
-python -m perf_scripts.cli run --exclude pg        # everything except PG
+uv run python -m perf_scripts.cli run --group neo4j      # all Neo4j tests
+uv run python -m perf_scripts.cli run --group pg          # just PostgreSQL tests
+uv run python -m perf_scripts.cli run --group baseline    # connectivity + direct + delta
+uv run python -m perf_scripts.cli run --exclude pg        # everything except PG
 ```
 
 ### Run specific tests
 
 ```bash
-python -m perf_scripts.cli run --tests warmup,delta
-python -m perf_scripts.cli run --tests hello
+uv run python -m perf_scripts.cli run --tests warmup,delta
+uv run python -m perf_scripts.cli run --tests hello
 ```
 
 ### Upload only
 
 ```bash
-python -m perf_scripts.cli upload --all            # upload all scripts
-python -m perf_scripts.cli upload runner.py        # upload one file
+uv run python -m perf_scripts.cli upload --all            # upload all scripts
+uv run python -m perf_scripts.cli upload runner.py        # upload one file
 ```
 
 ### Submit without uploading
 
 ```bash
-python -m perf_scripts.cli submit --group neo4j
-python -m perf_scripts.cli submit --tests direct_neo4j,direct_jdbc --no-wait
+uv run python -m perf_scripts.cli submit --group neo4j
+uv run python -m perf_scripts.cli submit --tests direct_neo4j,direct_jdbc --no-wait
 ```
 
 ### Skip upload on run
 
 ```bash
-python -m perf_scripts.cli run --skip-upload --group baseline
+uv run python -m perf_scripts.cli run --skip-upload --group baseline
 ```
+
+### Run on serverless compute
+
+```bash
+uv run python -m perf_scripts.cli run --group pg --serverless     # serverless instead of the classic cluster
+uv run python -m perf_scripts.cli submit --group pg --serverless
+
+# Compare direct Neo4j with the isolated UC JDBC path on serverless
+uv run python -m perf_scripts.cli run \
+  --tests direct_neo4j,direct_jdbc,remote_query,warmup \
+  --serverless
+```
+
+The `--serverless` flag submits the job on serverless compute instead of `DATABRICKS_CLUSTER_ID`
+(which is ignored). The serverless `environment_version` comes from `SERVERLESS_ENV_VERSION` in
+`.env` (default `5`, which maps to DBR 18; `4` maps to DBR 17.3). For direct Neo4j tests, the job
+environment installs the Neo4j Python driver and adds `JDBC_JAR_PATH` as a Java dependency. The UC
+connection independently resolves the same JAR inside SafeSpark, keeping `direct_jdbc` and
+`remote_query` as distinct execution paths.
 
 ## Tests
 
@@ -102,14 +140,16 @@ cd deploy-lakebase
 cp .env.sample .env
 # Set LAKEBASE_PROJECT_NAME and DATABRICKS_PROFILE
 
-./deploy.py deploy     # create instance and save connection credentials
-./deploy.py refresh    # regenerate expired OAuth token (expires after 1 hour)
-./deploy.py destroy    # tear down the instance
+uv run python deploy.py deploy     # create instance and save connection credentials
+uv run python deploy.py refresh    # regenerate expired OAuth token (expires after 1 hour)
+uv run python deploy.py destroy    # tear down the instance
 
-./test_lakebase.py     # load sample data and run queries
+uv run python test_lakebase.py     # load sample data and run queries
 ```
 
 Connection details are saved to `deploy-lakebase/perftest-connection.json`, which the main CLI reads automatically when building PG test parameters.
+
+Run local tests from the repository root with `uv run pytest`.
 
 ## Cleanup
 

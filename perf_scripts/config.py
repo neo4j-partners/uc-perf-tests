@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 def add_common_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     """Add the standard Neo4j + lakehouse arguments that submit injects."""
-    parser.add_argument("--neo4j-host", required=True, help="Neo4j host (without protocol)")
+    parser.add_argument("--neo4j-uri", required=True, help="Neo4j Bolt URI, e.g. neo4j+s://host")
     parser.add_argument("--neo4j-username", default="neo4j", help="Neo4j username")
     parser.add_argument("--neo4j-password", required=True, help="Neo4j password")
     parser.add_argument("--neo4j-database", default="neo4j", help="Neo4j database name")
@@ -36,14 +37,15 @@ def add_pg_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
 
 def derive_config(args) -> dict:
     """Compute derived values from parsed args. Returns a dict with all config."""
+    host = urlparse(args.neo4j_uri).hostname or ""
     return {
-        "neo4j_host": args.neo4j_host,
+        "neo4j_uri": args.neo4j_uri,
         "neo4j_username": args.neo4j_username,
         "neo4j_password": args.neo4j_password,
         "neo4j_database": args.neo4j_database,
-        "neo4j_bolt_uri": f"neo4j+s://{args.neo4j_host}",
-        "neo4j_jdbc_url": f"jdbc:neo4j+s://{args.neo4j_host}:7687/{args.neo4j_database}",
-        "neo4j_jdbc_url_sql": f"jdbc:neo4j+s://{args.neo4j_host}:7687/{args.neo4j_database}?enableSQLTranslation=true",
+        "neo4j_bolt_uri": args.neo4j_uri,
+        "neo4j_jdbc_url": f"jdbc:neo4j+s://{host}:7687/{args.neo4j_database}",
+        "neo4j_jdbc_url_sql": f"jdbc:neo4j+s://{host}:7687/{args.neo4j_database}?enableSQLTranslation=true",
         "uc_connection_name": args.uc_connection_name,
         "jdbc_jar_path": args.jdbc_jar_path,
         "java_dependencies": f'["{args.jdbc_jar_path}"]',

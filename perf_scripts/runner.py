@@ -209,8 +209,7 @@ def main():
     print("=" * 60)
     print("uc-perf-tests: Performance Test Runner")
     print("=" * 60)
-    print(f"  Neo4j Host:    {cfg['neo4j_host']}")
-    print(f"  Bolt URI:      {cfg['neo4j_bolt_uri']}")
+    print(f"  Neo4j URI:     {cfg['neo4j_uri']}")
     print(f"  UC Connection: {cfg['uc_connection_name']}")
     print(f"  Lakehouse:     {cfg['lakehouse_fqn']}")
     if pg_cfg:

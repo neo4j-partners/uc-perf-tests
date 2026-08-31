@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -25,7 +26,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 def load_env() -> dict[str, str]:
     """Load .env from project root."""
-    return load_dotenv(PROJECT_ROOT / ".env")
+    env = load_dotenv(PROJECT_ROOT / ".env")
+    if os.environ.get("PERF_CLASSIC_CLUSTER_ID"):
+        env["DATABRICKS_CLUSTER_ID"] = os.environ["PERF_CLASSIC_CLUSTER_ID"]
+    return env
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +83,7 @@ def _build_params(env: dict) -> list[str]:
     """Build CLI parameters from .env values and Lakebase credentials."""
     params = []
     mapping = [
-        ("NEO4J_HOST", "--neo4j-host"),
+        ("NEO4J_URI", "--neo4j-uri"),
         ("NEO4J_USERNAME", "--neo4j-username"),
         ("NEO4J_PASSWORD", "--neo4j-password"),
         ("NEO4J_DATABASE", "--neo4j-database"),
@@ -159,9 +163,11 @@ def cmd_submit(args, env: dict) -> None:
     """Submit runner.py as a Databricks job."""
     profile = env["DATABRICKS_PROFILE"]
     remote_dir = env["WORKSPACE_DIR"]
-    cluster_id = env["DATABRICKS_CLUSTER_ID"]
+    serverless = getattr(args, "serverless", False)
+    cluster_id = "" if serverless else env["DATABRICKS_CLUSTER_ID"]
 
-    _ensure_cluster(profile, cluster_id)
+    if not serverless:
+        _ensure_cluster(profile, cluster_id)
 
     params = _build_params(env)
 
@@ -173,23 +179,44 @@ def cmd_submit(args, env: dict) -> None:
         params.extend(["--exclude", args.exclude])
 
     remote_path = f"{remote_dir}/perf_scripts/runner.py"
-    run_name = f"uc_perf_tests: {args.tests or args.group or 'all'}"
+    compute = "serverless" if serverless else "classic"
+    run_name = f"uc_perf_tests ({compute}): {args.tests or args.group or 'all'}"
 
-    job_json = {
-        "run_name": run_name,
-        "tasks": [{
-            "task_key": "run_script",
-            "spark_python_task": {
-                "python_file": remote_path,
-                "parameters": params,
-            },
-            "existing_cluster_id": cluster_id,
-        }],
+    task = {
+        "task_key": "run_script",
+        "spark_python_task": {
+            "python_file": remote_path,
+            "parameters": params,
+        },
     }
+    job_json = {"run_name": run_name, "tasks": [task]}
+
+    if serverless:
+        env_version = env.get("SERVERLESS_ENV_VERSION", "5")
+        environment_spec = {
+            "environment_version": env_version,
+            "dependencies": ["neo4j>=6,<7"],
+        }
+        jdbc_jar_path = env.get("JDBC_JAR_PATH", "")
+        if jdbc_jar_path:
+            # The task needs its own copy for direct Spark JDBC. The UC connection
+            # independently resolves the same JAR inside SafeSpark.
+            environment_spec["java_dependencies"] = [jdbc_jar_path]
+
+        task["environment_key"] = "default"
+        job_json["environments"] = [{
+            "environment_key": "default",
+            "spec": environment_spec,
+        }]
+    else:
+        task["existing_cluster_id"] = cluster_id
 
     print(f"Submitting job (profile: {profile})")
     print(f"  Script:   {remote_path}")
-    print(f"  Cluster:  {cluster_id}")
+    if serverless:
+        print(f"  Compute:  serverless (environment_version {env.get('SERVERLESS_ENV_VERSION', '5')})")
+    else:
+        print(f"  Cluster:  {cluster_id}")
     print(f"  Run name: {run_name}")
     if args.tests:
         print(f"  Tests:    {args.tests}")
@@ -236,6 +263,8 @@ def main():
     p_submit.add_argument("--group", default="", help="Run tests in this group")
     p_submit.add_argument("--exclude", default="", help="Exclude tests in these groups")
     p_submit.add_argument("--no-wait", action="store_true", help="Don't wait for job completion")
+    p_submit.add_argument("--serverless", action="store_true",
+                          help="Run on serverless compute (env version from SERVERLESS_ENV_VERSION, default 5 ≈ DBR 18)")
 
     # run (upload + submit)
     p_run = sub.add_parser("run", help="Upload and submit (full pipeline)")
@@ -244,6 +273,8 @@ def main():
     p_run.add_argument("--group", default="")
     p_run.add_argument("--exclude", default="")
     p_run.add_argument("--no-wait", action="store_true")
+    p_run.add_argument("--serverless", action="store_true",
+                       help="Run on serverless compute (env version from SERVERLESS_ENV_VERSION, default 5 ≈ DBR 18)")
 
     args = parser.parse_args()
     env = load_env()
