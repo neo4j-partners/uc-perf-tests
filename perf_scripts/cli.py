@@ -23,6 +23,58 @@ from perf_scripts.config import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+SERVERLESS_UNSUPPORTED_TEST_GROUPS = {
+    "connectivity": frozenset({"neo4j", "baseline"}),
+    "direct_jdbc": frozenset({"neo4j", "baseline"}),
+    "spark_connector": frozenset({"neo4j"}),
+    "federated": frozenset({"neo4j", "uc"}),
+}
+
+
+class ServerlessSelectionError(ValueError):
+    """Raised when serverless compute cannot run the selected tests."""
+
+
+def _validate_serverless_selection(args: argparse.Namespace) -> None:
+    """Reject tests that require JVM dependencies on serverless Python tasks."""
+    if not getattr(args, "serverless", False):
+        return
+
+    tests_arg = getattr(args, "tests", "")
+    group_arg = getattr(args, "group", "")
+    exclude_arg = getattr(args, "exclude", "")
+    excluded_groups = {
+        group.strip() for group in exclude_arg.split(",") if group.strip()
+    }
+
+    if tests_arg:
+        selected = {name.strip() for name in tests_arg.split(",") if name.strip()}
+        unsupported = selected & SERVERLESS_UNSUPPORTED_TEST_GROUPS.keys()
+    elif group_arg:
+        unsupported = {
+            name
+            for name, groups in SERVERLESS_UNSUPPORTED_TEST_GROUPS.items()
+            if group_arg in groups
+        }
+    else:
+        unsupported = set(SERVERLESS_UNSUPPORTED_TEST_GROUPS)
+
+    unsupported = {
+        name
+        for name in unsupported
+        if not (SERVERLESS_UNSUPPORTED_TEST_GROUPS[name] & excluded_groups)
+    }
+    if not unsupported:
+        return
+
+    names = ", ".join(sorted(unsupported))
+    raise ServerlessSelectionError(
+        "Serverless Python tasks cannot run JVM-dependent tests: "
+        f"{names}. Use classic compute for those tests, or select "
+        "serverless-supported tests such as direct_neo4j, remote_query, "
+        "and warmup. The pg group is also supported on serverless."
+    )
+
 
 def load_env() -> dict[str, str]:
     """Load .env from project root."""
@@ -161,6 +213,7 @@ def cmd_upload(args, env: dict) -> None:
 
 def cmd_submit(args, env: dict) -> None:
     """Submit runner.py as a Databricks job."""
+    _validate_serverless_selection(args)
     profile = env["DATABRICKS_PROFILE"]
     remote_dir = env["WORKSPACE_DIR"]
     serverless = getattr(args, "serverless", False)
@@ -197,11 +250,6 @@ def cmd_submit(args, env: dict) -> None:
             "environment_version": env_version,
             "dependencies": ["neo4j>=6,<7"],
         }
-        jdbc_jar_path = env.get("JDBC_JAR_PATH", "")
-        if jdbc_jar_path:
-            # The task needs its own copy for direct Spark JDBC. The UC connection
-            # independently resolves the same JAR inside SafeSpark.
-            environment_spec["java_dependencies"] = [jdbc_jar_path]
 
         task["environment_key"] = "default"
         job_json["environments"] = [{
@@ -236,6 +284,7 @@ def cmd_submit(args, env: dict) -> None:
 
 def cmd_run(args, env: dict) -> None:
     """Upload + submit (replaces validate.sh)."""
+    _validate_serverless_selection(args)
     if not args.skip_upload:
         upload_args = argparse.Namespace(all=True, file=None)
         cmd_upload(upload_args, env)
@@ -279,12 +328,15 @@ def main():
     args = parser.parse_args()
     env = load_env()
 
-    if args.command == "upload":
-        cmd_upload(args, env)
-    elif args.command == "submit":
-        cmd_submit(args, env)
-    elif args.command == "run":
-        cmd_run(args, env)
+    try:
+        if args.command == "upload":
+            cmd_upload(args, env)
+        elif args.command == "submit":
+            cmd_submit(args, env)
+        elif args.command == "run":
+            cmd_run(args, env)
+    except ServerlessSelectionError as exc:
+        parser.error(str(exc))
 
 
 if __name__ == "__main__":

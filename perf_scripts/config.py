@@ -7,6 +7,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 
+NEO4J_JDBC_TIMEOUT_MS = 30_000
+
+
 def add_common_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     """Add the standard Neo4j + lakehouse arguments that submit injects."""
     parser.add_argument("--neo4j-uri", required=True, help="Neo4j Bolt URI, e.g. neo4j+s://host")
@@ -38,14 +41,18 @@ def add_pg_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
 def derive_config(args) -> dict:
     """Compute derived values from parsed args. Returns a dict with all config."""
     host = urlparse(args.neo4j_uri).hostname or ""
+    jdbc_url = (
+        f"jdbc:neo4j+s://{host}:7687/{args.neo4j_database}"
+        f"?timeout={NEO4J_JDBC_TIMEOUT_MS}"
+    )
     return {
         "neo4j_uri": args.neo4j_uri,
         "neo4j_username": args.neo4j_username,
         "neo4j_password": args.neo4j_password,
         "neo4j_database": args.neo4j_database,
         "neo4j_bolt_uri": args.neo4j_uri,
-        "neo4j_jdbc_url": f"jdbc:neo4j+s://{host}:7687/{args.neo4j_database}",
-        "neo4j_jdbc_url_sql": f"jdbc:neo4j+s://{host}:7687/{args.neo4j_database}?enableSQLTranslation=true",
+        "neo4j_jdbc_url": jdbc_url,
+        "neo4j_jdbc_url_sql": f"{jdbc_url}&enableSQLTranslation=true",
         "uc_connection_name": args.uc_connection_name,
         "jdbc_jar_path": args.jdbc_jar_path,
         "java_dependencies": f'["{args.jdbc_jar_path}"]',

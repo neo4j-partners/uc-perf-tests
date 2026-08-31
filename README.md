@@ -20,31 +20,59 @@ See [SAFESPARK_INVESTIGATION.md](SAFESPARK_INVESTIGATION.md) for the full invest
 
 ## Quick Start
 
-Complete the [Neo4j UC JDBC Guide](https://neo4j-partners.github.io/neo4j-uc-integration/neo4j_uc_jdbc_guide.html) first. It covers the UC connection, connector JAR, and sample data setup. Then install [uv](https://docs.astral.sh/uv/getting-started/installation/) and configure the benchmark:
+Complete the [Neo4j UC JDBC Guide](https://neo4j-partners.github.io/neo4j-uc-integration/neo4j_uc_jdbc_guide.html) first. It covers the UC connection, connector JAR, and sample data. Then install [uv](https://docs.astral.sh/uv/getting-started/installation/) and create the local environment:
 
 ```bash
 cp env.sample .env
 uv sync --dev
 ```
 
-Edit `.env` with the Databricks profile and workspace path, Neo4j credentials, `UC_CONNECTION_NAME`, and the UC Volume path to the Neo4j JDBC connector in `JDBC_JAR_PATH`. Classic compute also requires `DATABRICKS_CLUSTER_ID`; that cluster must have the Neo4j Python driver and JDBC JAR installed. Serverless uses `SERVERLESS_ENV_VERSION` and ignores `DATABRICKS_CLUSTER_ID`.
+Run the local unit tests:
 
-Run the same Neo4j benchmark matrix on classic compute:
+```bash
+uv run pytest
+```
+
+Configure `.env` for the compute path you want to test:
+
+| Compute path | Required `.env` keys | Compute prerequisite |
+|---|---|---|
+| Classic job | `DATABRICKS_PROFILE`, `WORKSPACE_DIR`, `DATABRICKS_CLUSTER_ID`, `NEO4J_URI`, `NEO4J_PASSWORD`, `UC_CONNECTION_NAME`, `JDBC_JAR_PATH`, `LAKEHOUSE_CATALOG` | Install the Neo4j Python driver and Neo4j JDBC JAR on the cluster. |
+| Serverless job | `DATABRICKS_PROFILE`, `WORKSPACE_DIR`, `NEO4J_URI`, `NEO4J_PASSWORD`, `UC_CONNECTION_NAME`, `JDBC_JAR_PATH`, `LAKEHOUSE_CATALOG` | None. `SERVERLESS_ENV_VERSION` is optional and defaults to `5`. |
+| SQL Warehouse | `DATABRICKS_PROFILE`, `DATABRICKS_SQL_WAREHOUSE_ID`, `UC_CONNECTION_NAME` | The warehouse must be able to use the UC connection. |
+
+`NEO4J_USERNAME`, `NEO4J_DATABASE`, and `LAKEHOUSE_SCHEMA` have defaults in `env.sample`.
+
+Compare direct Python/Bolt, direct Spark JDBC, and the UC connection on classic compute:
 
 ```bash
 uv run python -m perf_scripts.cli run \
   --tests direct_neo4j,direct_jdbc,remote_query,warmup
 ```
 
-Run it on serverless compute:
+Compare direct Python/Bolt with the UC connection on serverless compute:
 
 ```bash
 uv run python -m perf_scripts.cli run \
-  --tests direct_neo4j,direct_jdbc,remote_query,warmup \
+  --tests direct_neo4j,remote_query,warmup \
   --serverless
 ```
 
-`direct_neo4j` measures the Python/Bolt floor, `direct_jdbc` measures Spark JDBC without UC, and `remote_query` plus `warmup` measure the UC Connection path. On serverless, the job attaches `JDBC_JAR_PATH` to its environment for direct JDBC. The UC Connection independently loads the same JAR inside SafeSpark, so the two JDBC paths remain distinct while using the same driver artifact.
+`direct_neo4j` measures the Python/Bolt floor, `direct_jdbc` measures Spark JDBC without UC, and `remote_query` plus `warmup` measure the UC connection path. Serverless Python tasks reject Java dependencies, so `direct_jdbc` is classic-only. Use classic compute for the direct Spark JDBC versus UC JDBC comparison.
+
+To isolate the UC JDBC sandbox without quoted predicates or schema inference, run:
+
+```bash
+uv run python -m perf_scripts.cli run --tests uc_smoke --serverless
+```
+
+Run the UC `remote_query()` workload directly on a SQL Warehouse, without a Spark job:
+
+```bash
+uv run python -m perf_scripts.sql_warehouse
+```
+
+This submits the same five canonical queries through the Databricks Statement Execution API, validates their counts, and reports end-to-end latency.
 
 The uv environment contains only local CLI and test dependencies. Databricks Runtime and PySpark run on the remote compute.
 
@@ -100,18 +128,30 @@ uv run python -m perf_scripts.cli run --skip-upload --group baseline
 uv run python -m perf_scripts.cli run --group pg --serverless     # serverless instead of the classic cluster
 uv run python -m perf_scripts.cli submit --group pg --serverless
 
-# Compare direct Neo4j with the isolated UC JDBC path on serverless
+# Compare direct Python/Bolt with the isolated UC JDBC path on serverless
 uv run python -m perf_scripts.cli run \
-  --tests direct_neo4j,direct_jdbc,remote_query,warmup \
+  --tests direct_neo4j,remote_query,warmup \
   --serverless
 ```
 
 The `--serverless` flag submits the job on serverless compute instead of `DATABRICKS_CLUSTER_ID`
 (which is ignored). The serverless `environment_version` comes from `SERVERLESS_ENV_VERSION` in
-`.env` (default `5`, which maps to DBR 18; `4` maps to DBR 17.3). For direct Neo4j tests, the job
-environment installs the Neo4j Python driver and adds `JDBC_JAR_PATH` as a Java dependency. The UC
-connection independently resolves the same JAR inside SafeSpark, keeping `direct_jdbc` and
-`remote_query` as distinct execution paths.
+`.env` (default `5`, which maps to DBR 18; `4` maps to DBR 17.3). The job environment installs the
+Neo4j Python driver for `direct_neo4j`. The UC connection independently resolves `JDBC_JAR_PATH`
+inside SafeSpark for `remote_query`. Serverless Python tasks do not accept Java dependencies, so
+`direct_jdbc` remains a classic-compute test.
+
+### Run on a SQL Warehouse
+
+Set `DATABRICKS_SQL_WAREHOUSE_ID` in `.env`, then run:
+
+```bash
+uv run python -m perf_scripts.sql_warehouse
+```
+
+The SQL Warehouse benchmark is deliberately separate from `perf_scripts.cli`: it exercises only
+the UC `remote_query()` path through the Statement Execution API and does not create a Databricks
+Job.
 
 ## Tests
 
@@ -119,6 +159,7 @@ connection independently resolves the same JAR inside SafeSpark, keeping `direct
 |------|--------|-------------|
 | `hello` | — | Smoke test: verifies remote execution |
 | `connectivity` | neo4j, baseline | Basic connectivity across all connection paths |
+| `uc_smoke` | uc_smoke | Read-only UC JDBC DataFrame and `remote_query()` isolation probes |
 | `direct_neo4j` | neo4j, baseline | Python driver baseline (no Spark) |
 | `direct_jdbc` | neo4j, baseline | Spark JDBC reader (no UC, no SafeSpark) |
 | `remote_query` | neo4j, uc | Individual remote_query() timing through SafeSpark |

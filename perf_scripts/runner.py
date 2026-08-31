@@ -35,6 +35,7 @@ from perf_scripts.tests import REGISTRY, TestContext
 # Import all test modules so @register decorators fire.
 import perf_scripts.tests.test_hello
 import perf_scripts.tests.test_connectivity
+import perf_scripts.tests.test_uc_smoke
 import perf_scripts.tests.test_direct_neo4j
 import perf_scripts.tests.test_direct_jdbc
 import perf_scripts.tests.test_remote_query
