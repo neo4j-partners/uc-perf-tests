@@ -29,7 +29,7 @@ class TestCompound(PerfTest):
         for i, key in enumerate(COMPOUND_QUERY_KEYS):
             qdef = BENCHMARK_QUERIES[key]
             parts.append(
-                f"remote_query('{conn}', query => '{qdef.sql_double_escaped}') AS {ALIASES[i]}"
+                f"remote_query('{conn}', query => '{qdef.sql_escaped}') AS {ALIASES[i]}"
             )
         from_clause = "\n            CROSS JOIN\n                ".join(parts)
         compound_sql = f"""
@@ -38,7 +38,7 @@ class TestCompound(PerfTest):
         """
 
         with timed() as t_compound:
-            ctx.spark.sql(compound_sql).collect()
+            compound_row = ctx.spark.sql(compound_sql).collect()[0]
 
         ctx.report_data["compound_vs_individual"] = {
             "individual_total": individual_total,
@@ -47,6 +47,9 @@ class TestCompound(PerfTest):
         }
 
         ratio = t_compound.elapsed / individual_total if individual_total > 0 else 0
+        counts = list(compound_row)
+        expected = [BENCHMARK_QUERIES[key].expected_count for key in COMPOUND_QUERY_KEYS]
+        ctx.vr.record("Compound counts", counts == expected, f"{counts} (expected {expected})")
         ctx.vr.record("Individual total", True, f"{individual_total:.3f}s")
         ctx.vr.record("Compound CROSS JOIN", True, f"{t_compound.elapsed:.3f}s ({ratio:.1f}x)")
 

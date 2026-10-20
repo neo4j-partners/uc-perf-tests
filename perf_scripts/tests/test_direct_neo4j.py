@@ -18,6 +18,6 @@ class TestDirectNeo4j(PerfTest):
                         result = session.run(qdef.cypher).single()
                     cnt = result["cnt"]
                     ctx.report_data.setdefault("direct_times", {})[label] = t.elapsed
-                    ctx.vr.record(f"Direct Neo4j: {label}", cnt >= 0, f"{cnt:,} in {t.elapsed:.3f}s")
+                    ctx.vr.record(f"Direct Neo4j: {label}", cnt == qdef.expected_count, f"{cnt:,} (expected {qdef.expected_count:,}) in {t.elapsed:.3f}s")
         finally:
             driver.close()

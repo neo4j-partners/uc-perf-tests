@@ -16,17 +16,17 @@ class QueryDef:
     cypher: str
     sql: str
     schema: str
+    expected_count: int
     result_column: str = "cnt"
 
     @property
     def sql_escaped(self) -> str:
-        """SQL with single quotes doubled for remote_query() ``query => '...'`` context."""
-        return self.sql.replace("'", "''")
+        """SQL escaped for a Spark SQL ``query => '...'`` string literal.
 
-    @property
-    def sql_double_escaped(self) -> str:
-        """SQL with single quotes quadrupled for compound remote_query() context."""
-        return self.sql.replace("'", "''''")
+        Spark does not treat ``''`` as an escaped quote: adjacent literals are
+        concatenated and the quotes are dropped. Backslash escapes are required.
+        """
+        return self.sql.replace("\\", "\\\\").replace("'", "\\'")
 
 
 BENCHMARK_QUERIES: dict[str, QueryDef] = {
@@ -35,30 +35,35 @@ BENCHMARK_QUERIES: dict[str, QueryDef] = {
         cypher="MATCH (m:MaintenanceEvent) RETURN COUNT(m) AS cnt",
         sql="SELECT COUNT(*) AS cnt FROM MaintenanceEvent",
         schema="cnt LONG",
+        expected_count=300,
     ),
     "Critical events": QueryDef(
         name="Critical events",
         cypher="MATCH (m:MaintenanceEvent {severity: 'CRITICAL'}) RETURN COUNT(m) AS cnt",
         sql="SELECT COUNT(*) AS cnt FROM MaintenanceEvent WHERE severity = 'CRITICAL'",
         schema="cnt LONG",
+        expected_count=101,
     ),
     "Flight count": QueryDef(
         name="Flight count",
         cypher="MATCH (f:Flight) RETURN COUNT(f) AS cnt",
         sql="SELECT COUNT(*) AS cnt FROM Flight",
         schema="cnt LONG",
+        expected_count=800,
     ),
     "Flight->Airport traversal": QueryDef(
         name="Flight->Airport traversal",
         cypher="MATCH (f:Flight)-[:DEPARTS_FROM]->(a:Airport) RETURN COUNT(*) AS cnt",
         sql="SELECT COUNT(*) AS cnt FROM Flight f NATURAL JOIN DEPARTS_FROM r NATURAL JOIN Airport a",
         schema="cnt LONG",
+        expected_count=800,
     ),
     "Aircraft count": QueryDef(
         name="Aircraft count",
         cypher="MATCH (a:Aircraft) RETURN COUNT(a) AS cnt",
         sql="SELECT COUNT(*) AS cnt FROM Aircraft",
         schema="cnt LONG",
+        expected_count=20,
     ),
 }
 
@@ -78,3 +83,6 @@ PG_RQ_QUERIES = {
     "remote_query SELECT 1": "SELECT 1 AS val",
     "remote_query COUNT(*)": "SELECT COUNT(*) AS cnt FROM information_schema.tables",
 }
+
+# Repeats of each PG remote_query to show whether the first call is just a warm-up.
+PG_RQ_NUM_RUNS = 5

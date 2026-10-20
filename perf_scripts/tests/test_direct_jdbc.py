@@ -19,4 +19,4 @@ class TestDirectJdbc(PerfTest):
                 result = df.collect()
             cnt = result[0]["cnt"]
             ctx.report_data.setdefault("direct_jdbc_times", {})[label] = t.elapsed
-            ctx.vr.record(f"Direct JDBC: {label}", cnt >= 0, f"{cnt:,} in {t.elapsed:.3f}s")
+            ctx.vr.record(f"Direct JDBC: {label}", cnt == qdef.expected_count, f"{cnt:,} (expected {qdef.expected_count:,}) in {t.elapsed:.3f}s")

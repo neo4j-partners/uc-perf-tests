@@ -106,7 +106,7 @@ def _statement_error(response: dict) -> str:
 
 
 def _validate_count(response: dict, query: QueryDef) -> int:
-    """Extract and validate the one-row, non-negative integer count result."""
+    """Extract and validate the one-row integer count against the expected count."""
     rows = (response.get("result") or {}).get("data_array")
     if not isinstance(rows, list) or len(rows) != 1:
         raise StatementExecutionError(
@@ -129,8 +129,10 @@ def _validate_count(response: dict, query: QueryDef) -> int:
         raise StatementExecutionError(
             f"{query.name} returned a non-integer count"
         )
-    if count < 0:
-        raise StatementExecutionError(f"{query.name} returned a negative count")
+    if count != query.expected_count:
+        raise StatementExecutionError(
+            f"{query.name} returned {count}; expected {query.expected_count}"
+        )
     return count
 
 

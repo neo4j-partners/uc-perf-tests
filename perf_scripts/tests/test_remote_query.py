@@ -20,4 +20,4 @@ class TestRemoteQuery(PerfTest):
                 """).collect()
             cnt = result[0][qdef.result_column]
             ctx.report_data.setdefault("rq_times", {})[label] = t.elapsed
-            ctx.vr.record(f"remote_query: {label}", cnt >= 0, f"{cnt:,} in {t.elapsed:.3f}s")
+            ctx.vr.record(f"remote_query: {label}", cnt == qdef.expected_count, f"{cnt:,} (expected {qdef.expected_count:,}) in {t.elapsed:.3f}s")

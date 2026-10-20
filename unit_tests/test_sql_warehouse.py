@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import unittest
+from dataclasses import replace
 from unittest.mock import Mock, patch
 
 from perf_scripts.queries import BENCHMARK_QUERIES
@@ -37,6 +38,19 @@ class DatabricksCliApiTests(unittest.TestCase):
         )
 
 
+class QueryEscapingTests(unittest.TestCase):
+    def test_single_quotes_are_backslash_escaped_for_spark_literals(self) -> None:
+        query = BENCHMARK_QUERIES["Critical events"]
+
+        self.assertIn("severity = \\'CRITICAL\\'", query.sql_escaped)
+        self.assertNotIn("''", query.sql_escaped)
+
+    def test_backslashes_are_escaped_before_quotes(self) -> None:
+        query = replace(BENCHMARK_QUERIES["Critical events"], sql="a\\'b")
+
+        self.assertEqual(query.sql_escaped, "a\\\\\\'b")
+
+
 class ExecuteBenchmarkQueryTests(unittest.TestCase):
     def setUp(self) -> None:
         self.query = BENCHMARK_QUERIES["Critical events"]
@@ -48,7 +62,7 @@ class ExecuteBenchmarkQueryTests(unittest.TestCase):
             {
                 "statement_id": "statement-1",
                 "status": {"state": "SUCCEEDED"},
-                "result": {"data_array": [["42"]]},
+                "result": {"data_array": [["101"]]},
             },
         ]
         clock = Mock(side_effect=[10.0, 10.1, 11.5])
@@ -64,7 +78,7 @@ class ExecuteBenchmarkQueryTests(unittest.TestCase):
             sleeper=sleeper,
         )
 
-        self.assertEqual(result.count, 42)
+        self.assertEqual(result.count, 101)
         self.assertEqual(result.statement_id, "statement-1")
         self.assertAlmostEqual(result.elapsed_seconds, 1.5)
         post_call, get_call = api.request.call_args_list
@@ -88,6 +102,23 @@ class ExecuteBenchmarkQueryTests(unittest.TestCase):
         }
 
         with self.assertRaisesRegex(StatementExecutionError, "remote_query failed"):
+            execute_benchmark_query(
+                api,
+                "warehouse-1",
+                "neo4j_connection",
+                self.query,
+                clock=Mock(side_effect=[1.0, 2.0]),
+            )
+
+    def test_count_mismatch_is_rejected(self) -> None:
+        api = Mock()
+        api.request.return_value = {
+            "statement_id": "statement-4",
+            "status": {"state": "SUCCEEDED"},
+            "result": {"data_array": [["0"]]},
+        }
+
+        with self.assertRaisesRegex(StatementExecutionError, "returned 0; expected 101"):
             execute_benchmark_query(
                 api,
                 "warehouse-1",

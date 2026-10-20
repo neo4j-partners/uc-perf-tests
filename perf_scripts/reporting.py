@@ -38,6 +38,31 @@ def timed():
         result.elapsed = time.perf_counter() - start
 
 
+def avg_subsequent(runs: list[float]) -> float:
+    """Average of every run after the first, or 0 when there is only one run."""
+    return sum(runs[1:]) / len(runs[1:]) if len(runs) > 1 else 0
+
+
+def print_warmup_report(title: str, runs_by_label: dict[str, list[float]]) -> None:
+    """Print run-by-run times and first vs subsequent stats for each query."""
+    if not runs_by_label:
+        return
+    print(f"\n{'=' * 70}")
+    print(title)
+    print(f"{'=' * 70}")
+    for label, runs in runs_by_label.items():
+        avg_warm = avg_subsequent(runs)
+        print(f"\n  {label}")
+        for i, t in enumerate(runs):
+            marker = " <-- first run" if i == 0 else ""
+            print(f"    Run {i + 1}: {t:.3f}s{marker}")
+        print(f"    First run:        {runs[0]:.3f}s")
+        print(f"    Avg subsequent:   {avg_warm:.3f}s")
+        print(f"    Min:              {min(runs):.3f}s")
+        print(f"    Max:              {max(runs):.3f}s")
+        print(f"    Warm-up penalty:  {runs[0] - avg_warm:+.3f}s")
+
+
 class ValidationResults:
     """Collects PASS/FAIL results and prints a summary."""
 

@@ -1,9 +1,9 @@
 # JDBC Connections performance: current answer
 
 - **Overview:** Classic compute now passes with the fixed Neo4j connector, while serverless Jobs and SQL Warehouse still fail inside SafeSpark.
-- **Serverless UC:** Direct Python/Bolt works. UC JDBC DataFrame reads and `remote_query()` fail inside SafeSpark with gRPC `Channel shutdownNow` and keepalive errors.
-- **UC DataFrame path:** Serverless Spark calls the JDBC DataFrame API with `databricks.connection`. Unity Catalog loads `1.3.7-local-test.jar` inside SafeSpark. The Neo4j JDBC driver then connects to Neo4j over Bolt.
-- **UC DataFrame flow:** Serverless Spark → UC connection → SafeSpark → Neo4j JDBC driver → Neo4j Bolt endpoint.
+- **Serverless UC:** Direct Python/Bolt works. UC Java JDBC DataFrame reads and `remote_query()` fail inside SafeSpark with gRPC `Channel shutdownNow` and keepalive errors.
+- **UC DataFrame path:** This is Java JDBC, not Python JDBC. Serverless Spark calls its Java JDBC DataFrame API with `databricks.connection`. Unity Catalog loads `1.3.7-local-test.jar` inside SafeSpark. The Neo4j Java JDBC driver then connects to Neo4j over Bolt.
+- **UC DataFrame flow:** Serverless Spark → Java JDBC DataFrame API → UC connection → SafeSpark → Neo4j Java JDBC driver → Neo4j Bolt endpoint.
 - **Current conclusion:** The same fixed UC connection works on classic compute, so the remaining transport failure is specific to the serverless and SQL Warehouse SafeSpark execution environment.
 
 ## Latest live results
@@ -40,6 +40,17 @@
 | Direct connection | Python/Bolt succeeds on serverless. The Neo4j endpoint and credentials work outside SafeSpark. |
 | Cross-compute result | The fixed UC connection passes on classic and fails on serverless and SQL Warehouse. The failure follows the SafeSpark environment. |
 | Translator work | `SparkSubqueryCleaningTranslator` correctness work is separate from this transport failure. |
+
+## Serverless issues
+
+| Issue | Evidence | Likely cause | Next action |
+|---|---|---|---|
+| UC Java JDBC DataFrame read fails | Spark's Java JDBC DataFrame API and the Neo4j Java JDBC driver returned `Channel shutdownNow` before producing a result. | SafeSpark network, process, or resource failure. | Check isolated egress and SafeSpark termination logs. |
+| UC `remote_query()` fails | The literal-free smoke query returned the same gRPC error. | Failure below SQL parsing and the Spark API. | Send the run and task IDs to Databricks Support. |
+| SQL Warehouse UC fails | The statement failed after about 85s with `Channel shutdownNow`. | The SQL Warehouse isolated sandbox has the same transport problem. | Check SQL Warehouse SafeSpark network and process logs. |
+| Automatic retry fails | Attempts of 141s and 85s both failed. | The failure is repeatable. | Fix the isolated environment before collecting more timings. |
+| Direct Python succeeds | Python/Bolt returns results from the same serverless job environment. | Neo4j, credentials, and general serverless egress work outside SafeSpark. | Focus diagnosis on the isolated JDBC sandbox. |
+| Classic UC succeeds | The same JAR, UC connection, and timeout pass on classic compute. | The connector and connection definition work outside serverless SafeSpark. | Compare classic and serverless sandbox logs and network policy. |
 
 ## Current cause and fix status
 
