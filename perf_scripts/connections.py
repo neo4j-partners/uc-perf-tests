@@ -1,4 +1,4 @@
-"""Connection helpers for Neo4j, JDBC, Spark Connector, and PostgreSQL."""
+"""Connection helpers for Neo4j, JDBC, Spark Connector, PostgreSQL, and the trivial stub."""
 
 from __future__ import annotations
 
@@ -25,6 +25,19 @@ def read_direct_jdbc(spark, cfg: dict, query: str, custom_schema: str):
         .load()
     )
 
+
+
+def read_pg_direct_jdbc(spark, pg_cfg: dict, query: str):
+    """Read from PostgreSQL via direct Spark JDBC (no UC, no SafeSpark)."""
+    return (
+        spark.read.format("jdbc")
+        .option("url", pg_cfg["jdbc_url"])
+        .option("driver", "org.postgresql.Driver")
+        .option("user", pg_cfg["username"])
+        .option("password", pg_cfg["password"])
+        .option("query", query)
+        .load()
+    )
 
 
 def read_neo4j_jdbc(spark, cfg: dict, custom_schema: str, *, query: str = None, dbtable: str = None):
@@ -113,6 +126,25 @@ def create_pg_jdbc_connection(spark, pg_cfg: dict, conn_name: str) -> str:
             user '{pg_cfg["username"]}',
             password '{pg_cfg["password"]}',
             driver 'org.postgresql.Driver'
+        )
+    """)
+    return conn_name
+
+
+def create_trivial_jdbc_connection(spark, jar_path: str, conn_name: str) -> str:
+    """Create a TYPE JDBC connection backed by the no-op trivial driver."""
+    spark.sql(f"DROP CONNECTION IF EXISTS {conn_name}")
+    spark.sql(f"""
+        CREATE CONNECTION {conn_name} TYPE JDBC
+        ENVIRONMENT (
+          java_dependencies '["{jar_path}"]'
+        )
+        OPTIONS (
+          url 'jdbc:trivial:mem',
+          user 'dummy',
+          password 'dummy',
+          driver 'trivial.TrivialDriver',
+          externalOptionsAllowList 'dbtable,query,partitionColumn,lowerBound,upperBound,numPartitions,fetchSize,customSchema'
         )
     """)
     return conn_name

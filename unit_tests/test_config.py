@@ -13,6 +13,7 @@ def _args() -> SimpleNamespace:
         neo4j_database="neo4j",
         uc_connection_name="catalog.schema.neo4j_connection",
         jdbc_jar_path="/Volumes/catalog/schema/jars/neo4j-jdbc.jar",
+        trivial_jdbc_jar_path="",
         lakehouse_catalog="catalog",
         lakehouse_schema="schema",
     )

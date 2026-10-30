@@ -18,6 +18,7 @@ def add_common_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     parser.add_argument("--neo4j-database", default="neo4j", help="Neo4j database name")
     parser.add_argument("--uc-connection-name", required=True, help="UC JDBC connection name")
     parser.add_argument("--jdbc-jar-path", required=True, help="Path to connector JAR in UC Volume")
+    parser.add_argument("--trivial-jdbc-jar-path", default="", help="Path to trivial-jdbc-stub JAR in UC Volume")
     parser.add_argument("--lakehouse-catalog", required=True, help="Lakehouse catalog name")
     parser.add_argument("--lakehouse-schema", default="lakehouse", help="Lakehouse schema name")
     return parser
@@ -56,6 +57,7 @@ def derive_config(args) -> dict:
         "uc_connection_name": args.uc_connection_name,
         "jdbc_jar_path": args.jdbc_jar_path,
         "java_dependencies": f'["{args.jdbc_jar_path}"]',
+        "trivial_jdbc_jar_path": args.trivial_jdbc_jar_path,
         "lakehouse_catalog": args.lakehouse_catalog,
         "lakehouse_schema": args.lakehouse_schema,
         "lakehouse_fqn": f"`{args.lakehouse_catalog}`.`{args.lakehouse_schema}`",

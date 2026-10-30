@@ -141,6 +141,7 @@ def _build_params(env: dict) -> list[str]:
         ("NEO4J_DATABASE", "--neo4j-database"),
         ("UC_CONNECTION_NAME", "--uc-connection-name"),
         ("JDBC_JAR_PATH", "--jdbc-jar-path"),
+        ("TRIVIAL_JDBC_JAR_PATH", "--trivial-jdbc-jar-path"),
         ("LAKEHOUSE_CATALOG", "--lakehouse-catalog"),
         ("LAKEHOUSE_SCHEMA", "--lakehouse-schema"),
     ]

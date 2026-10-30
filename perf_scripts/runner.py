@@ -47,6 +47,8 @@ import perf_scripts.tests.test_federated
 import perf_scripts.tests.test_warmup
 import perf_scripts.tests.test_pg_builtin
 import perf_scripts.tests.test_pg_jdbc
+import perf_scripts.tests.test_pg_direct_jdbc
+import perf_scripts.tests.test_trivial_jdbc
 
 
 def parse_args():
